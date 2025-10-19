@@ -125,7 +125,9 @@ class UserManager:
 class UserManagementPlugin:
     """用户管理插件主类"""
     
-    def __init__(self):
+    def __init__(self, context=None, **kwargs):
+        """初始化插件，兼容AstrBot的context参数"""
+        self.context = context
         self.plugin_name = "用户管理插件"
         self.plugin_version = "1.0.0"
         self.plugin_description = "管理用户服务时间和自动提醒"
@@ -143,6 +145,9 @@ class UserManagementPlugin:
         self.reminder_task_running = False
         
         logger.info(f"用户管理插件已初始化，管理员: {self.admins}")
+        
+        # 启动提醒任务
+        asyncio.create_task(self.start_reminder_task())
     
     def is_admin(self, user_id: str) -> bool:
         """检查用户是否为管理员"""
@@ -150,8 +155,6 @@ class UserManagementPlugin:
     
     def extract_at_user(self, message_text: str) -> Optional[str]:
         """从消息中提取@的用户ID"""
-        # 这里需要根据实际的消息格式来解析@用户
-        # 通常格式可能是 [CQ:at,qq=123456] 或类似格式
         import re
         
         # 尝试匹配QQ的CQ码格式
@@ -360,7 +363,6 @@ class UserManagementPlugin:
                 message += f"\n用户名：{username}"
             
             logger.info(f"发送3天到期提醒: {user_id}")
-            # 这里需要调用实际的消息发送API
             await self.send_group_message(message)
         
         # 检查当天到期的用户
@@ -386,16 +388,24 @@ class UserManagementPlugin:
                 await self.send_private_message(admin_id, message)
     
     async def send_group_message(self, message: str):
-        """发送群消息（需要根据实际API实现）"""
-        # 这里需要根据实际的AstrBot API来实现
-        logger.info(f"群消息: {message}")
-        pass
+        """发送群消息"""
+        if self.context and hasattr(self.context, 'send_message'):
+            try:
+                await self.context.send_message(message)
+            except Exception as e:
+                logger.error(f"发送群消息失败: {e}")
+        else:
+            logger.info(f"群消息: {message}")
     
     async def send_private_message(self, user_id: str, message: str):
-        """发送私聊消息（需要根据实际API实现）"""
-        # 这里需要根据实际的AstrBot API来实现
-        logger.info(f"私聊消息给 {user_id}: {message}")
-        pass
+        """发送私聊消息"""
+        if self.context and hasattr(self.context, 'send_private_message'):
+            try:
+                await self.context.send_private_message(user_id, message)
+            except Exception as e:
+                logger.error(f"发送私聊消息失败: {e}")
+        else:
+            logger.info(f"私聊消息给 {user_id}: {message}")
     
     def stop_reminder_task(self):
         """停止提醒任务"""
@@ -461,28 +471,25 @@ class UserManagementPlugin:
             logger.error(f"保存设置失败: {e}")
             return {"success": False, "message": f"保存失败: {str(e)}"}
 
-# 创建插件实例
-plugin = UserManagementPlugin()
+# 根据AstrBot的插件系统要求，可能需要以下方式导出插件
+def register():
+    """注册插件"""
+    return UserManagementPlugin
 
-# 导出主要函数供AstrBot调用
-async def handle_message(message_text: str, sender_id: str, platform: str = "unknown") -> Optional[str]:
-    """消息处理入口"""
-    return await plugin.process_message(message_text, sender_id, platform)
+# 或者直接实例化
+plugin_instance = None
 
-def get_plugin_info():
-    """获取插件信息"""
-    return plugin.get_plugin_info()
+def get_plugin_instance(context=None):
+    """获取插件实例"""
+    global plugin_instance
+    if plugin_instance is None:
+        plugin_instance = UserManagementPlugin(context=context)
+    return plugin_instance
 
-def start_plugin():
-    """启动插件"""
-    logger.info("用户管理插件启动")
-    # 启动提醒任务
-    asyncio.create_task(plugin.start_reminder_task())
-
-def stop_plugin():
-    """停止插件"""
-    logger.info("用户管理插件停止")
-    plugin.stop_reminder_task()
+# 兼容不同的插件加载方式
+def init_plugin(context=None):
+    """初始化插件"""
+    return UserManagementPlugin(context=context)
 
 # 如果直接运行此文件，进行测试
 if __name__ == "__main__":
@@ -490,12 +497,14 @@ if __name__ == "__main__":
         # 测试基本功能
         print("=== 用户管理插件测试 ===")
         
+        plugin = UserManagementPlugin()
+        
         # 测试帮助指令
-        result = await handle_message("/帮助", "123456")
+        result = await plugin.process_message("/帮助", "123456")
         print("帮助信息:", result)
         
         # 测试查看到期时间（无记录）
-        result = await handle_message("/查看到期时间", "123456")
+        result = await plugin.process_message("/查看到期时间", "123456")
         print("查看到期时间:", result)
         
         print("测试完成")
