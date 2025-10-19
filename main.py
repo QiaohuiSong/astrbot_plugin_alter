@@ -125,9 +125,11 @@ class UserManager:
 class UserManagementPlugin:
     """用户管理插件主类"""
     
-    def __init__(self, context=None, **kwargs):
-        """初始化插件，兼容AstrBot的context参数"""
-        self.context = context
+    def __init__(self, *args, **kwargs):
+        """初始化插件，接受任意参数以兼容不同的调用方式"""
+        # 从参数中提取context
+        self.context = kwargs.get('context') or (args[0] if args else None)
+        
         self.plugin_name = "用户管理插件"
         self.plugin_version = "1.0.0"
         self.plugin_description = "管理用户服务时间和自动提醒"
@@ -147,7 +149,11 @@ class UserManagementPlugin:
         logger.info(f"用户管理插件已初始化，管理员: {self.admins}")
         
         # 启动提醒任务
-        asyncio.create_task(self.start_reminder_task())
+        try:
+            asyncio.create_task(self.start_reminder_task())
+        except RuntimeError:
+            # 如果没有运行的事件循环，稍后启动
+            pass
     
     def is_admin(self, user_id: str) -> bool:
         """检查用户是否为管理员"""
@@ -412,6 +418,20 @@ class UserManagementPlugin:
         self.reminder_task_running = False
         logger.info("停止自动提醒任务")
     
+    # AstrBot插件系统可能需要的方法
+    async def on_message(self, event):
+        """处理消息事件（AstrBot插件接口）"""
+        try:
+            message_text = str(event.message)
+            sender_id = str(event.sender.user_id)
+            
+            result = await self.process_message(message_text, sender_id)
+            
+            if result:
+                await event.send(result)
+        except Exception as e:
+            logger.error(f"处理消息事件失败: {e}")
+    
     def get_plugin_info(self):
         """获取插件信息"""
         return {
@@ -470,26 +490,6 @@ class UserManagementPlugin:
         except Exception as e:
             logger.error(f"保存设置失败: {e}")
             return {"success": False, "message": f"保存失败: {str(e)}"}
-
-# 根据AstrBot的插件系统要求，可能需要以下方式导出插件
-def register():
-    """注册插件"""
-    return UserManagementPlugin
-
-# 或者直接实例化
-plugin_instance = None
-
-def get_plugin_instance(context=None):
-    """获取插件实例"""
-    global plugin_instance
-    if plugin_instance is None:
-        plugin_instance = UserManagementPlugin(context=context)
-    return plugin_instance
-
-# 兼容不同的插件加载方式
-def init_plugin(context=None):
-    """初始化插件"""
-    return UserManagementPlugin(context=context)
 
 # 如果直接运行此文件，进行测试
 if __name__ == "__main__":
